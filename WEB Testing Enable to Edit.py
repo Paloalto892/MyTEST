@@ -2,6 +2,7 @@ from flask import Flask, request, redirect, url_for, Response
 import boto3
 import pymysql
 import os
+import requests
 
 app = Flask(__name__)
 
@@ -21,6 +22,10 @@ def html_header(title):
             body {{
                 font-family: 'Segoe UI', sans-serif;
                 background-color: #f9f9fb;
+                background-image: url('https://images.unsplash.com/photo-1488109811119-98431feb6929?q=80&w=880&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D');
+                background-size: cover;
+                background-position: center;
+                background-repeat: no-repeat;
                 margin: 30px;
                 color: #333;
             }}
@@ -38,6 +43,21 @@ def html_header(title):
     </head>
     <body>
     """
+def get_location_info(ip):
+    try:
+        response = requests.get(f'https://ipapi.co/{ip}/json/')
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                'ip': ip,
+                'country': data.get('country_name', '不明'),
+                'region': data.get('region', ''),
+                'city': data.get('city', ''),
+                'org': data.get('org', '')
+            }
+    except Exception as e:
+        print("GeoIP API error:", e)
+    return {'ip': ip, 'country': '不明', 'region': '', 'city': '', 'org': ''}
 
 @app.route('/')
 def home():
@@ -500,7 +520,94 @@ def db_tables(database):
         conn.close()
 
         html = html_header(f"データベース: {database}")
-        html += f"<h1>📂 {database} のテーブルリスト</h1><ul>"
+
+        html += f"""
+        <style>
+            body {{
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background-color: #f4f6f9;
+                color: #2c3e50;
+                padding: 40px;
+            }}
+            h1 {{
+                font-size: 28px;
+                margin-bottom: 30px;
+                color: #34495e;
+            }}
+            ul.table-list {{
+                list-style: none;
+                padding: 0;
+                margin: 0;
+            }}
+            ul.table-list li {{
+                background: white;
+                border-radius: 10px;
+                padding: 18px 24px;
+                margin-bottom: 16px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+            }}
+            .table-name {{
+                font-size: 18px;
+                font-weight: 500;
+            }}
+            .actions {{
+                display: flex;
+                gap: 10px;
+            }}
+            .actions a {{
+                text-decoration: none;
+                padding: 6px 14px;
+                border-radius: 5px;
+                font-size: 14px;
+                color: white;
+                transition: background-color 0.2s ease;
+            }}
+            .open-btn {{
+                background-color: #3498db;
+            }}
+            .open-btn:hover {{
+                background-color: #2980b9;
+            }}
+            .delete-btn {{
+                background-color: #e74c3c;
+            }}
+            .delete-btn:hover {{
+                background-color: #c0392b;
+            }}
+            .query-btn, .create-btn {{
+                display: inline-block;
+                margin-top: 20px;
+                text-decoration: none;
+                background-color: #2ecc71;
+                color: white;
+                padding: 12px 20px;
+                border-radius: 8px;
+                font-weight: bold;
+                margin-right: 10px;
+            }}
+            .query-btn:hover, .create-btn:hover {{
+                background-color: #27ae60;
+            }}
+            .button {{
+                display: inline-block;
+                margin-top: 30px;
+                padding: 10px 20px;
+                background-color: #95a5a6;
+                color: white;
+                border-radius: 6px;
+                text-decoration: none;
+            }}
+            .button:hover {{
+                background-color: #7f8c8d;
+            }}
+        </style>
+
+        <h1>📂 {database} のテーブルリスト</h1>
+        <ul class="table-list">
+        """
 
         if not rows:
             html += "<p>⚠️ 現在、テーブルが存在しません。</p>"
@@ -512,11 +619,25 @@ def db_tables(database):
                 tables = [row[0] for row in rows]
 
             for t in tables:
-                html += f'<li><a href="/db/{database}/table/{t}">📄 {t}</a> - <a href="/db/{database}/table/{t}/delete" style="color:red;">🗑️ 削除</a></li>'
-            html += f'<li><a href="/db/{database}/query">🧠 SQL クエリを実行</a></li>'
+                html += f"""
+                <li>
+                    <span class="table-name">📄 {t}</span>
+                    <span class="actions">
+                        <a class="open-btn" href="/db/{database}/table/{t}">開く</a>
+                        <a class="delete-btn" href="/db/{database}/table/{t}/delete">削除</a>
+                    </span>
+                </li>
+                """
 
-        html += f'<li><a href="/db/{database}/create_table">🆕 新しい テーブルを作成</a></li>'
-        html += "</ul><a class='button' href='/db'>← データベースリストへ</a></body></html>"
+        html += f"""
+        </ul>
+        <a class="query-btn" href="/db/{database}/query">🧠 SQL クエリを実行</a>
+        <a class="create-btn" href="/db/{database}/create_table">🆕 新しいテーブルを作成</a>
+        <br>
+        <a class="button" href="/db">← データベースリストへ</a>
+        </body></html>
+        """
+
         return html
 
     except Exception as e:
@@ -556,7 +677,7 @@ def db_table(database, table_name):
 
     html = html_header(f"テーブル: {table_name}")
     html += f"""
-    <h1>📄 {database}.{table_name}</h1>
+    <h1>📄 {database}の{table_name}</h1>
     <a class='button' href='/db/{database}'>← テーブルリストへ</a>
     <form method="get" style="margin: 20px 0;">
         <input type="text" name="q" value="{query or ''}" placeholder="🔍 検索..." />
@@ -699,7 +820,7 @@ def delete_database(database):
             message = f"❌ 削除失敗: {str(e)}"
 
     html = html_header("データベース削除確認")
-    html += f"<h1>⚠️ データベース削除確認: {database}</h1>"
+    html += f"<h1>⚠️ データベース削除確認 : {database}を削除しますか？</h1>"
     html += f"<form method='post'><button type='submit' class='button' style='background:red;'>🗑️ 本当に削除する</button></form>"
     html += f"<p style='color:red;'>{message}</p>"
     html += f"<a class='button' href='/db/{database}'>← 戻る</a></body></html>"
@@ -753,13 +874,39 @@ def delete_table(database, table_name):
             message = f"❌ 削除失敗: {str(e)}"
 
     html = html_header("テーブル削除確認")
-    html += f"<h1>⚠️ テーブル削除確認: {database}.{table_name}</h1>"
+    html += f"<h1>⚠️ テーブル削除確認 : {database}の{table_name}を削除しますか？</h1>"
     html += f"<form method='post'><button type='submit' class='button' style='background:red;'>🗑️ 本当に削除する</button></form>"
     html += f"<p style='color:red;'>{message}</p>"
     html += f"<a class='button' href='/db/{database}/table/{table_name}'>← 戻る</a></body></html>"
     return html
 
 # ---------- 管理者メニュー セクション ----------
+
+@app.route('/admin')
+def admin_menu():
+    user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    user_agent = request.headers.get('User-Agent', '不明')
+
+    location = get_location_info(user_ip)
+
+    html = html_header("管理者メニュー")
+    html += f"""
+    <h1>🔧 管理者メニュー</h1>
+    <p>このページでは、現在アクセス中のユーザー情報を確認できます。</p>
+
+    <table>
+        <tr><th>IP アドレス</th><td>{location['ip']}</td></tr>
+        <tr><th>国</th><td>{location['country']}</td></tr>
+        <tr><th>地域</th><td>{location['region']}</td></tr>
+        <tr><th>都市</th><td>{location['city']}</td></tr>
+        <tr><th>組織</th><td>{location['org']}</td></tr>
+        <tr><th>User-Agent</th><td>{user_agent}</td></tr>
+    </table>
+
+    <a class="button" href="/">← ホームへ戻る</a>
+    </body></html>
+    """
+    return html
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=80, debug=True)
