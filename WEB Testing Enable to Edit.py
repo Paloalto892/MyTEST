@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, url_for, Response
+from flask import Flask, request, redirect, url_for, Response, session
 import boto3
 import pymysql
 import os
@@ -131,7 +131,7 @@ def home():
             <h2>RDS データベース</h2>
             <p>データベースとテーブルの操作が可能</p>
         </a>
-        <a class="menu-item" href="#">
+        <a class="menu-item" href="/admin_login">
             <div style="font-size: 40px;">🔧</div>
             <h2>管理者メニュー</h2>
             <p>⚠️ 現在工事中です</p>
@@ -882,8 +882,99 @@ def delete_table(database, table_name):
 
 # ---------- 管理者メニュー セクション ----------
 
+app.secret_key = 'your_secret_key_here'
+
+@app.route('/admin_login', methods=['GET', 'POST'])
+def admin_login():
+    error = ''
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        if username == 'admin' and password == 'PASSW0RD':
+            session['admin_logged_in'] = True
+            return redirect('/admin')
+        else:
+            error = '⚠️ 로그인 정보가 올바르지 않습니다。'
+
+    html = html_header("管理者ログイン")
+    html += f"""
+    <style>
+        .login-container {{
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 30px;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }}
+        h2 {{
+            text-align: center;
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }}
+        input[type="text"], input[type="password"] {{
+            width: 100%;
+            padding: 12px 15px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }}
+        button {{
+            width: 100%;
+            padding: 12px;
+            background-color: #2c3e50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+        }}
+        button:hover {{
+            background-color: #1a242f;
+        }}
+        .admin-contact {{
+            display: block;
+            text-align: center;
+            margin-top: 15px;
+            color: #3498db;
+        }}
+        .warning {{
+            background-color: #ffe6e6;
+            border: 1px solid #ff4d4d;
+            padding: 12px;
+            border-radius: 5px;
+            color: #b30000;
+            margin-bottom: 15px;
+            font-weight: bold;
+            text-align: center;
+        }}
+        .error-msg {{
+            color: red;
+            text-align: center;
+            margin-top: 10px;
+        }}
+    </style>
+
+    <div class="login-container">
+        <h2>🔐 管理者ログイン</h2>
+        <div class="warning">관리자 외 접근 시 모든 시도가 기록되며, 반드시 보고됩니다。</div>
+
+        <form method="POST">
+            <input type="text" name="username" placeholder="管理者 ID" required>
+            <input type="password" name="password" placeholder="パスワード" required>
+            <button type="submit">ログイン</button>
+        </form>
+        <a class="admin-contact" href="mailto:admin@example.com">관리자에게 문의</a>
+        {'<div class="error-msg">' + error + '</div>' if error else ''}
+    </div>
+    </body></html>
+    """
+    return html
+
 @app.route('/admin')
 def admin_menu():
+    if not session.get('admin_logged_in'):
+        return redirect('/admin_login')
+    
     user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     user_agent = request.headers.get('User-Agent', '不明')
 
@@ -907,6 +998,11 @@ def admin_menu():
     </body></html>
     """
     return html
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect('/admin_login')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=80, debug=True)
