@@ -894,7 +894,7 @@ def admin_login():
             session['admin_logged_in'] = True
             return redirect('/admin')
         else:
-            error = '⚠️ 로그인 정보가 올바르지 않습니다。'
+            error = '⚠️ ログイン情報が正しくありません。'
 
     html = html_header("管理者ログイン")
     html += f"""
@@ -956,14 +956,14 @@ def admin_login():
 
     <div class="login-container">
         <h2>🔐 管理者ログイン</h2>
-        <div class="warning">관리자 외 접근 시 모든 시도가 기록되며, 반드시 보고됩니다。</div>
+        <div class="warning">管理者以外のアクセス時にすべての試みが記録され、必ず報告されます。</div>
 
         <form method="POST">
             <input type="text" name="username" placeholder="管理者 ID" required>
             <input type="password" name="password" placeholder="パスワード" required>
             <button type="submit">ログイン</button>
         </form>
-        <a class="admin-contact" href="mailto:admin@example.com">관리자에게 문의</a>
+        <a class="admin-contact" href="j.junbeom@reach-out.co.jp">管理者にお問い合わせ</a>
         {'<div class="error-msg">' + error + '</div>' if error else ''}
     </div>
     </body></html>
@@ -995,6 +995,7 @@ def admin_menu():
     </table>
 
     <a class="button" href="/">← ホームへ戻る</a>
+    <a class="button" style="background-color:#e74c3c; margin-left: 10px;" href="/logout">ログアウト</a>
     </body></html>
     """
     return html
