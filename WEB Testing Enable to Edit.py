@@ -1,8 +1,9 @@
-from flask import Flask, request, redirect, url_for, Response, session
+from flask import Flask, request, redirect, url_for, Response, session, g
 import boto3
 import pymysql
 import os
 import requests
+import datetime
 
 app = Flask(__name__)
 
@@ -43,21 +44,6 @@ def html_header(title):
     </head>
     <body>
     """
-def get_location_info(ip):
-    try:
-        response = requests.get(f'https://ipapi.co/{ip}/json/')
-        if response.status_code == 200:
-            data = response.json()
-            return {
-                'ip': ip,
-                'country': data.get('country_name', '不明'),
-                'region': data.get('region', ''),
-                'city': data.get('city', ''),
-                'org': data.get('org', '')
-            }
-    except Exception as e:
-        print("GeoIP API error:", e)
-    return {'ip': ip, 'country': '不明', 'region': '', 'city': '', 'org': ''}
 
 @app.route('/')
 def home():
@@ -883,6 +869,7 @@ def delete_table(database, table_name):
 # ---------- 管理者メニュー セクション ----------
 
 app.secret_key = 'your_secret_key_here'
+access_logs = []
 
 @app.route('/admin_login', methods=['GET', 'POST'])
 def admin_login():
@@ -970,32 +957,58 @@ def admin_login():
     """
     return html
 
+@app.before_request
+def log_request_info():
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    user_agent = request.headers.get('User-Agent', '不明')
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    access_logs.append({
+        'time': timestamp,
+        'ip': ip,
+        'user_agent': user_agent,
+        'path': request.path
+    })
+
+    # Logの数が多くならないように制限
+    if len(access_logs) > 2000:
+        access_logs.pop(0)
+
 @app.route('/admin')
 def admin_menu():
     if not session.get('admin_logged_in'):
         return redirect('/admin_login')
-    
-    user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    user_agent = request.headers.get('User-Agent', '不明')
 
-    location = get_location_info(user_ip)
-
-    html = html_header("管理者メニュー")
-    html += f"""
-    <h1>🔧 管理者メニュー</h1>
-    <p>このページでは、現在アクセス中のユーザー情報を確認できます。</p>
+    html = html_header("アクセスログ")
+    html += """
+    <h1>🌐 アクセスログ一覧</h1>
+    <p>最近の訪問者情報（最大2000件まで）を表示します。</p>
 
     <table>
-        <tr><th>IP アドレス</th><td>{location['ip']}</td></tr>
-        <tr><th>国</th><td>{location['country']}</td></tr>
-        <tr><th>地域</th><td>{location['region']}</td></tr>
-        <tr><th>都市</th><td>{location['city']}</td></tr>
-        <tr><th>組織</th><td>{location['org']}</td></tr>
-        <tr><th>User-Agent</th><td>{user_agent}</td></tr>
-    </table>
+        <tr>
+            <th>アクセス時刻</th>
+            <th>IP アドレス</th>
+            <th>User-Agent</th>
+            <th>アクセスパス</th>
+        </tr>
+    """
 
-    <a class="button" href="/">← ホームへ戻る</a>
-    <a class="button" style="background-color:#e74c3c; margin-left: 10px;" href="/logout">ログアウト</a>
+    for log in reversed(access_logs):
+        html += f"""
+        <tr>
+            <td>{log['time']}</td>
+            <td>{log['ip']}</td>
+            <td>{log['user_agent']}</td>
+            <td>{log['path']}</td>
+        </tr>
+        """
+
+    html += """
+    </table>
+    <div style="margin-top: 30px;">
+        <a class="button" href="/">← ホームへ戻る</a>
+        <a class="button" style="background-color:#e74c3c; margin-left: 10px;" href="/logout">ログアウト</a>
+    </div>
     </body></html>
     """
     return html
