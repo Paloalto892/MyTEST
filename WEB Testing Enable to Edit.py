@@ -16,7 +16,7 @@ LOCAL_DOWNLOAD_DIR = '/home/ec2-user/tmpdownload'  # EC2内 Download経路
 s3 = boto3.client('s3', region_name=REGION)
 
 def html_header(title):
-    return f"""
+    header = f"""
     <html>
     <head>
         <title>{title}</title>
@@ -42,9 +42,49 @@ def html_header(title):
             .button {{ display: inline-block; margin-top: 20px; padding: 10px 15px; background-color: #3498db; color: white; text-decoration: none; border-radius: 5px; }}
             .button:hover {{ background-color: #2980b9; }}
         </style>
-    </head>
-    <body>
     """
+
+    # ✅ 관리자 로그인 시 상태 표시
+    if session.get('admin_logged_in') and session.get('login_time'):
+        remaining_sec = max(0, 1800 - int(time.time() - session['login_time']))
+        minutes = remaining_sec // 60
+        seconds = remaining_sec % 60
+        header += f"""
+        <script>
+        let remaining = {remaining_sec};
+        setInterval(() => {{
+            if (--remaining <= 0) {{
+                window.location.href = '/logout';
+            }} else {{
+                const m = String(Math.floor(remaining / 60)).padStart(2, '0');
+                const s = String(remaining % 60).padStart(2, '0');
+                const el = document.getElementById('countdown');
+                if (el) el.textContent = `自動ログアウトまで残り ${{parseInt(m)}}分${{s}}秒`;
+            }}
+        }}, 1000);
+        </script>
+        """
+
+        header += f"""
+        </head>
+        <body>
+        <div style="position: fixed; top: 0; left: 0; width: 100%; height: 50px;
+                    background-color: #2c3e50; color: white;
+                    display: flex; align-items: center; justify-content: space-between;
+                    padding: 0 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); z-index: 9999;">
+            <span>✅ 管理者接続中</span>
+            <div style="display: flex; align-items: center; gap: 20px;">
+                <span id="countdown">自動ログアウトまで残り {minutes}分{seconds:02d}秒</span>
+                <a href="/logout" style="color: white; background-color: #e74c3c;
+                    padding: 6px 12px; border-radius: 4px; text-decoration: none; font-weight: bold;">
+                    ログアウト
+                </a>
+            </div>
+        </div>
+        <div style="padding-top: 60px;">
+        """
+    else:
+        header += "</head><body>"
 
 @app.route('/')
 def home():
