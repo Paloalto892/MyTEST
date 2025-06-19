@@ -974,6 +974,14 @@ def log_request_info():
     if len(access_logs) > 2000:
         access_logs.pop(0)
 
+@app.after_request
+def add_no_cache_headers(response):  # 🔒 Cache防止Header追加
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
 @app.route('/admin')
 def admin_menu():
     if not session.get('admin_logged_in'):
