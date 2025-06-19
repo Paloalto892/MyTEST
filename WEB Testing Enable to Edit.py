@@ -67,24 +67,33 @@ def html_header(title):
 
         header += f"""
         </head>
-        <body>
-        <div style="position: fixed; top: 0; left: 0; width: 100%; height: 50px;
-                    background-color: #2c3e50; color: white;
-                    display: flex; align-items: center; justify-content: space-between;
-                    padding: 0 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); z-index: 9999;">
-            <span>✅ 管理者接続中</span>
-            <div style="display: flex; align-items: center; gap: 20px;">
-                <span id="countdown">自動ログアウトまで残り {minutes}分{seconds:02d}秒</span>
-                <a href="/logout" style="color: white; background-color: #e74c3c;
-                    padding: 6px 12px; border-radius: 4px; text-decoration: none; font-weight: bold;">
-                    ログアウト
-                </a>
+        <body style="padding-top: 60px;">
+        <div style="
+            position: fixed; top: 0; left: 0; width: 100%;
+            box-sizing: border-box;
+            height: 50px;
+            background-color: #2c3e50; color: white;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 30px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            z-index: 9999;
+            ">
+                <span>✅ 管理者接続中</span>
+                <div style="display: flex; align-items: center; gap: 20px;">
+                    <span id="countdown" style="white-space: nowrap;">自動ログアウトまで残り {minutes}分{seconds:02d}秒</span>
+                    <a href="/logout" style="
+                    color: white; background-color: #e74c3c;
+                    padding: 6px 12px; border-radius: 4px; text-decoration: none; font-weight: bold;
+                    margin-right: 10px;
+                    white-space: nowrap;
+                    ">ログアウト</a>
+                </div>
             </div>
-        </div>
-        <div style="padding-top: 60px;">
-        """
+            """
     else:
         header += "</head><body>"
+    
+    return header
 
 @app.route('/')
 def home():
