@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, url_for, Response, session, g
+from flask import Flask, request, redirect, url_for, Response, session, g, render_template_string
 import boto3
 import pymysql
 import os
@@ -7,6 +7,12 @@ import datetime
 import time
 
 app = Flask(__name__)
+admin_sessions = {}  
+user_approvals = {
+    'user1': False,
+    'user2': False,
+    'user3': True,
+}
 
 # ---------- 共通 ----------
 S3_BUCKET = 's3buck-any'
@@ -95,8 +101,189 @@ def html_header(title):
     
     return header
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = ''
+    if request.method == 'POST':
+        user_id = request.form.get('user_id')
+        password = request.form.get('password')
+
+        # 관리자 로그인 처리
+        if user_id == 'admin' and password == 'PASSW0RD':
+            session.clear()
+            session['admin_logged_in'] = True
+            session['login_time'] = int(time.time())
+            return redirect('/admin')
+
+        # 일반 사용자 로그인 처리
+        if user_id in user_approvals:
+            if not user_approvals[user_id]:
+                error = '⚠️ このアカウントはまだ承認されていません。管理者の承認をお待ちください。'
+            else:
+                session.clear()
+                session['user_logged_in'] = True
+                session['user_id'] = user_id
+                session['login_time'] = int(time.time())
+                return redirect('/')
+        else:
+            error = '⚠️ ユーザーIDまたはパスワードが正しくありません。'
+
+    html = html_header("ログイン")
+    html += f"""
+    <style>
+        .login-box {{
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 30px;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }}
+        .login-box h2 {{
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }}
+        input {{
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+        }}
+        button {{
+            width: 100%;
+            padding: 12px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            margin-top: 10px;
+        }}
+        button:hover {{
+            background: #2980b9;
+        }}
+        .error-msg {{
+            color: red;
+            text-align: center;
+            margin-top: 10px;
+        }}
+        .extra-links {{
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+            font-size: 14px;
+        }}
+        .extra-links a {{
+            color: #3498db;
+            text-decoration: none;
+        }}
+        .extra-links a:hover {{
+            text-decoration: underline;
+        }}
+    </style>
+
+    <div class="login-box">
+        <h2>🔐 ユーザーログイン</h2>
+        <form method="POST">
+            <input type="text" name="user_id" placeholder="ユーザーID" required>
+            <input type="password" name="password" placeholder="パスワード" required>
+            <button type="submit">ログイン</button>
+        </form>
+
+        <div class="extra-links">
+            <a href="/signup">アカウント作成</a>
+        </div>
+
+        {'<div class="error-msg">' + error + '</div>' if error else ''}
+    </div>
+    </body></html>
+    """
+    return html
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    message = ''
+    if request.method == 'POST':
+        user_id = request.form.get('user_id')
+
+        if not user_id:
+            message = '⚠️ ユーザーIDを入力してください。'
+        elif user_id in user_approvals:
+            message = '⚠️ そのユーザーIDはすでに存在します。'
+        elif len(user_approvals) >= 1000:
+            message = '⚠️ 作成可能なユーザー数の上限（1000件）に達しました。'
+        else:
+            user_approvals[user_id] = False  # 승인 대기 상태로 추가
+            message = f'✅ アカウント「{user_id}」が作成されました。管理者の承認をお待ちください。'
+
+    html = html_header("アカウント作成")
+    html += f"""
+    <style>
+        .signup-box {{
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 30px;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }}
+        h2 {{
+            text-align: center;
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }}
+        input {{
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }}
+        button {{
+            width: 100%;
+            padding: 12px;
+            background: #27ae60;
+            color: white;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+        }}
+        button:hover {{
+            background: #219150;
+        }}
+        .message {{
+            text-align: center;
+            color: {'red' if '⚠️' in message else 'green'};
+            font-weight: bold;
+            margin-top: 15px;
+        }}
+    </style>
+
+    <div class="signup-box">
+        <h2>📝 アカウント作成</h2>
+        <form method="POST">
+            <input type="text" name="user_id" placeholder="希望するユーザーID" required>
+            <button type="submit">作成する</button>
+        </form>
+        {'<div class="message">' + message + '</div>' if message else ''}
+    </div>
+    </body></html>
+    """
+    return html
+
 @app.route('/')
 def home():
+    if session.get('admin_logged_in'):
+        pass
+    else:
+        user_id = session.get('user_id')
+        if not session.get('user_logged_in') or not user_id or not user_approvals.get(user_id):
+            return redirect('/login')
+    
+    #ログインが出来た人のみ
     html = html_header("ホーム")
     html += """
     <style>
@@ -933,6 +1120,11 @@ def admin_login():
         if username == 'admin' and password == 'PASSW0RD':
             session['admin_logged_in'] = True
             session['login_time'] = int(time.time())    #ログイン時間を記録
+            session_id = request.cookies.get("session")
+            admin_sessions[session_id] = {
+                'login_time': session['login_time'],
+                'ip': request.headers.get('X-Forwarded-For', request.remote_addr)
+            }
             return redirect('/admin')
         else:
             error = '⚠️ ログイン情報が正しくありません。'
@@ -1041,11 +1233,98 @@ def admin_menu():
     if not session.get('admin_logged_in'):
         return redirect('/admin_login')
 
+    # 세션 타임아웃 30분
     login_time = session.get('login_time')
-    if login_time and time.time() - login_time > 1800:
+    if not login_time or time.time() - login_time > 1800:
+        # 세션 삭제 및 admin_sessions에서도 제거
+        session_id = request.cookies.get("session")
+        admin_sessions.pop(session_id, None)
         session.clear()
         return redirect('/admin_login')
     
+    remaining_sec = max(0, 1800 - int(time.time() - login_time))
+    minutes = remaining_sec // 60
+    seconds = remaining_sec % 60
+
+    # 관리자 접속중 목록
+    session_list_html = ''
+    now = time.time()
+    # 30분 이상 경과한 세션은 자동 삭제
+    expired_sessions = []
+    for sid, info in admin_sessions.items():
+        if now - info['login_time'] > 1800:
+            expired_sessions.append(sid)
+        else:
+            lt = datetime.datetime.fromtimestamp(info['login_time']).strftime('%Y-%m-%d %H:%M:%S')
+            session_list_html += f"<tr><td>{sid}</td><td>{info['ip']}</td><td>{lt}</td></tr>"
+    for sid in expired_sessions:
+        admin_sessions.pop(sid, None)
+
+    html = html_header("管理者メニュー")
+    html += f"""
+    <div style="position: fixed; top: 10px; right: 20px; font-size: 14px; color: #333; background-color: #f0f0f0; padding: 8px 12px; border-radius: 5px;">
+        ✅ 管理者接続中・残り <span id="countdown">{minutes:02d}:{seconds:02d}</span>
+    </div>
+
+    <script>
+    let remaining = {remaining_sec};
+    const countdown = document.getElementById('countdown');
+    const timer = setInterval(() => {{
+        if (--remaining <= 0) {{
+            clearInterval(timer);
+            window.location.href = '/logout';
+        }} else {{
+            const m = String(Math.floor(remaining / 60)).padStart(2, '0');
+            const s = String(remaining % 60).padStart(2, '0');
+            countdown.textContent = `${{m}}:${{s}}`;
+        }}
+    }}, 1000);
+    </script>
+
+    <h1>管理者メニュー</h1>
+
+    <div style="display: flex; gap: 30px; flex-wrap: wrap;">
+        <a href="/admin/access_logs" class="button" style="padding: 20px; font-size: 18px; flex: 1; min-width: 250px;">🌐 アクセスログ確認</a>
+        <a href="/admin/active_sessions" class="button" style="padding: 20px; font-size: 18px; flex: 1; min-width: 250px;">👥 接続中管理者一覧</a>
+        <a href="/admin/approvals" class="button" style="padding: 20px; font-size: 18px; flex: 1; min-width: 250px;">✅ 利用者承認管理</a>
+        <a href="/logout" class="button" style="padding: 20px; font-size: 18px; background-color: #e74c3c; flex: 1; min-width: 250px;">ログアウト</a>
+    </div>
+
+    <h2 style="margin-top: 40px;">現在接続中の管理者セッション一覧</h2>
+    <table style="width: 100%; border-collapse: collapse; box-shadow: 0 0 15px rgba(0,0,0,0.05);">
+        <thead style="background-color: #f2f2f2;">
+            <tr>
+                <th>Session ID</th>
+                <th>IP アドレス</th>
+                <th>ログイン時間</th>
+            </tr>
+        </thead>
+        <tbody>
+            {session_list_html if session_list_html else '<tr><td colspan="3" style="text-align:center;">接続中の管理者はいません。</td></tr>'}
+        </tbody>
+    </table>
+
+    <div style="margin-top: 40px;">
+        <a class="button" href="/" style="background-color: #2c3e50; color: white; padding: 12px 20px; border-radius: 6px; font-size: 16px;">← ホームへ戻る</a>
+    </div>
+
+    </body></html>
+    """
+    return html
+
+@app.route('/admin/access_logs')
+def admin_access_logs():
+    if not session.get('admin_logged_in'):
+        return redirect('/admin_login')
+    # 기존 접근로그 표시 기능을 분리
+
+    login_time = session.get('login_time')
+    if not login_time or time.time() - login_time > 1800:
+        session_id = request.cookies.get("session")
+        admin_sessions.pop(session_id, None)
+        session.clear()
+        return redirect('/admin_login')
+
     remaining_sec = max(0, 1800 - int(time.time() - login_time))
     minutes = remaining_sec // 60
     seconds = remaining_sec % 60
@@ -1057,7 +1336,6 @@ def admin_menu():
     </div>
 
     <script>
-    // JS カウントダウン表現、 ゼロ秒になったらRe-Direction
     let remaining = {remaining_sec};
     const countdown = document.getElementById('countdown');
     const timer = setInterval(() => {{
@@ -1075,13 +1353,16 @@ def admin_menu():
     <h1>🌐 アクセスログ一覧</h1>
     <p>最近の訪問者情報（最大2000件まで）を表示します。</p>
 
-    <table>
-        <tr>
-            <th>アクセス時刻</th>
-            <th>IP アドレス</th>
-            <th>User-Agent</th>
-            <th>アクセスパス</th>
-        </tr>
+    <table style="width: 100%; border-collapse: collapse; box-shadow: 0 0 15px rgba(0,0,0,0.05);">
+        <thead style="background-color: #f2f2f2;">
+            <tr>
+                <th>アクセス時刻</th>
+                <th>IP アドレス</th>
+                <th>User-Agent</th>
+                <th>アクセスパス</th>
+            </tr>
+        </thead>
+        <tbody>
     """
 
     for log in reversed(access_logs):
@@ -1095,14 +1376,181 @@ def admin_menu():
         """
 
     html += """
+        </tbody>
     </table>
+
     <div style="margin-top: 30px;">
-        <a class="button" href="/">← ホームへ戻る</a>
+        <a class="button" href="/admin">← 管理者メニューへ戻る</a>
         <a class="button" style="background-color:#e74c3c; margin-left: 10px;" href="/logout">ログアウト</a>
     </div>
     </body></html>
     """
     return html
+
+
+# 접속중인 관리자 목록 별도 페이지 (재사용 가능)
+@app.route('/admin/active_sessions')
+def admin_active_sessions():
+    if not session.get('admin_logged_in'):
+        return redirect('/admin_login')
+
+    login_time = session.get('login_time')
+    if not login_time or time.time() - login_time > 1800:
+        session_id = request.cookies.get("session")
+        admin_sessions.pop(session_id, None)
+        session.clear()
+        return redirect('/admin_login')
+
+    remaining_sec = max(0, 1800 - int(time.time() - login_time))
+    minutes = remaining_sec // 60
+    seconds = remaining_sec % 60
+
+    session_list_html = ''
+    now = time.time()
+    expired_sessions = []
+    for sid, info in admin_sessions.items():
+        if now - info['login_time'] > 1800:
+            expired_sessions.append(sid)
+        else:
+            lt = datetime.datetime.fromtimestamp(info['login_time']).strftime('%Y-%m-%d %H:%M:%S')
+            session_list_html += f"<tr><td>{sid}</td><td>{info['ip']}</td><td>{lt}</td></tr>"
+    for sid in expired_sessions:
+        admin_sessions.pop(sid, None)
+
+    html = html_header("接続中管理者一覧")
+    html += f"""
+    <div style="position: fixed; top: 10px; right: 20px; font-size: 14px; color: #333; background-color: #f0f0f0; padding: 8px 12px; border-radius: 5px;">
+        ✅ 管理者接続中・残り <span id="countdown">{minutes:02d}:{seconds:02d}</span>
+    </div>
+
+    <script>
+    let remaining = {remaining_sec};
+    const countdown = document.getElementById('countdown');
+    const timer = setInterval(() => {{
+        if (--remaining <= 0) {{
+            clearInterval(timer);
+            window.location.href = '/logout';
+        }} else {{
+            const m = String(Math.floor(remaining / 60)).padStart(2, '0');
+            const s = String(remaining % 60).padStart(2, '0');
+            countdown.textContent = `${{m}}:${{s}}`;
+        }}
+    }}, 1000);
+    </script>
+
+    <h1>👥 接続中管理者一覧</h1>
+    <table style="width: 100%; border-collapse: collapse; box-shadow: 0 0 15px rgba(0,0,0,0.05);">
+        <thead style="background-color: #f2f2f2;">
+            <tr>
+                <th>Session ID</th>
+                <th>IP アドレス</th>
+                <th>ログイン時間</th>
+            </tr>
+        </thead>
+        <tbody>
+            {session_list_html if session_list_html else '<tr><td colspan="3" style="text-align:center;">接続中の管理者はいません。</td></tr>'}
+        </tbody>
+    </table>
+
+    <div style="margin-top: 30px;">
+        <a class="button" href="/admin">← 管理者メニューへ戻る</a>
+        <a class="button" style="background-color:#e74c3c; margin-left: 10px;" href="/logout">ログアウト</a>
+    </div>
+    </body></html>
+    """
+    return html
+@app.route('/admin/approvals')
+def admin_approvals():
+    if not session.get('admin_logged_in'):
+        return redirect('/admin_login')
+
+    login_time = session.get('login_time')
+    if not login_time or time.time() - login_time > 1800:
+        session_id = request.cookies.get("session")
+        admin_sessions.pop(session_id, None)
+        session.clear()
+        return redirect('/admin_login')
+
+    remaining_sec = max(0, 1800 - int(time.time() - login_time))
+    minutes = remaining_sec // 60
+    seconds = remaining_sec % 60
+
+    # 승인 대기/승인 사용자 구분
+    pending_users = [u for u, approved in user_approvals.items() if not approved]
+    approved_users = [u for u, approved in user_approvals.items() if approved]
+
+    # HTML 생성
+    pending_html = ''.join(
+        f"""
+        <tr>
+            <td>{user}</td>
+            <td>
+                <a href="/admin/approve_user/{user}" style="color:green; font-weight:bold; margin-right: 10px;">承認</a>
+                <a href="/admin/reject_user/{user}" style="color:red; font-weight:bold;">拒否</a>
+            </td>
+        </tr>
+        """ for user in pending_users
+    ) or '<tr><td colspan="2" style="text-align:center;">承認待ちの利用者はいません。</td></tr>'
+
+    approved_html = ''.join(
+        f"<tr><td>{user}</td><td>承認済み</td></tr>" for user in approved_users
+    ) or '<tr><td colspan="2" style="text-align:center;">承認済み利用者がまだいません。</td></tr>'
+
+    html = html_header("利用者承認管理")
+    html += f"""
+    <div style="position: fixed; top: 10px; right: 20px; font-size: 14px; color: #333; background-color: #f0f0f0; padding: 8px 12px; border-radius: 5px;">
+        ✅ 管理者接続中・残り <span id="countdown">{minutes:02d}:{seconds:02d}</span>
+    </div>
+
+    <script>
+    let remaining = {remaining_sec};
+    const countdown = document.getElementById('countdown');
+    const timer = setInterval(() => {{
+        if (--remaining <= 0) {{
+            clearInterval(timer);
+            window.location.href = '/logout';
+        }} else {{
+            const m = String(Math.floor(remaining / 60)).padStart(2, '0');
+            const s = String(remaining % 60).padStart(2, '0');
+            countdown.textContent = `${{m}}:${{s}}`;
+        }}
+    }}, 1000);
+    </script>
+
+    <h1>✅ 利用者承認管理</h1>
+
+    <h2>承認待ち利用者</h2>
+    <table>
+        <tr><th>ユーザーID</th><th>操作</th></tr>
+        {pending_html}
+    </table>
+
+    <h2 style="margin-top:40px;">承認済み利用者</h2>
+    <table>
+        <tr><th>ユーザーID</th><th>状態</th></tr>
+        {approved_html}
+    </table>
+
+    <div style="margin-top: 30px;">
+        <a class="button" href="/admin">← 管理者メニューへ戻る</a>
+        <a class="button" style="background-color:#e74c3c; margin-left: 10px;" href="/logout">ログアウト</a>
+    </div>
+    </body></html>
+    """
+    return html
+
+@app.route('/admin/approve_user/<user_id>')
+def approve_user(user_id):
+    if session.get('admin_logged_in') and user_id in user_approvals:
+        user_approvals[user_id] = True
+    return redirect('/admin/approvals')
+
+
+@app.route('/admin/reject_user/<user_id>')
+def reject_user(user_id):
+    if session.get('admin_logged_in') and user_id in user_approvals:
+        user_approvals.pop(user_id, None)
+    return redirect('/admin/approvals')
 
 @app.route('/logout')
 def logout():
