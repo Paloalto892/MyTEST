@@ -4,6 +4,7 @@ import pymysql
 import os
 import requests
 import datetime
+import time
 
 app = Flask(__name__)
 
@@ -873,12 +874,16 @@ access_logs = []
 
 @app.route('/admin_login', methods=['GET', 'POST'])
 def admin_login():
+    if session.get('admin_logged_in'):
+        return redirect('/admin')
+    
     error = ''
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         if username == 'admin' and password == 'PASSW0RD':
             session['admin_logged_in'] = True
+            session['login_time'] = int(time.time())    #ログイン時間を記録
             return redirect('/admin')
         else:
             error = '⚠️ ログイン情報が正しくありません。'
@@ -950,7 +955,7 @@ def admin_login():
             <input type="password" name="password" placeholder="パスワード" required>
             <button type="submit">ログイン</button>
         </form>
-        <a class="admin-contact" href="j.junbeom@reach-out.co.jp">管理者にお問い合わせ</a>
+        <a class="admin-contact" href="mailto:j.junbeom@reach-out.co.jp?subject=管理者へのお問い合わせ">管理者にお問い合わせ</a>
         {'<div class="error-msg">' + error + '</div>' if error else ''}
     </div>
     </body></html>
@@ -987,8 +992,37 @@ def admin_menu():
     if not session.get('admin_logged_in'):
         return redirect('/admin_login')
 
+    login_time = session.get('login_time')
+    if login_time and time.time() - login_time > 1800:
+        session.clear()
+        return redirect('/admin_login')
+    
+    remaining_sec = max(0, 1800 - int(time.time() - login_time))
+    minutes = remaining_sec // 60
+    seconds = remaining_sec % 60
+
     html = html_header("アクセスログ")
-    html += """
+    html += f"""
+    <div style="position: fixed; top: 10px; right: 20px; font-size: 14px; color: #333; background-color: #f0f0f0; padding: 8px 12px; border-radius: 5px;">
+        ✅ 管理者接続中・残り <span id="countdown">{minutes:02d}:{seconds:02d}</span>
+    </div>
+
+    <script>
+    // JS カウントダウン表現、 ゼロ秒になったらRe-Direction
+    let remaining = {remaining_sec};
+    const countdown = document.getElementById('countdown');
+    const timer = setInterval(() => {{
+        if (--remaining <= 0) {{
+            clearInterval(timer);
+            window.location.href = '/logout';
+        }} else {{
+            const m = String(Math.floor(remaining / 60)).padStart(2, '0');
+            const s = String(remaining % 60).padStart(2, '0');
+            countdown.textContent = `${{m}}:${{s}}`;
+        }}
+    }}, 1000);
+    </script>
+
     <h1>🌐 アクセスログ一覧</h1>
     <p>最近の訪問者情報（最大2000件まで）を表示します。</p>
 
